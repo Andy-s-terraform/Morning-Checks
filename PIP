@@ -1,0 +1,524 @@
+$newline = "`r"
+$pat = "^[0-9][0-9]$"
+$debug = $false
+ 
+# move old checks logs
+ 
+if((Test-Path ".\Archive") -eq 0){
+            New-Item -Path ".\Archive" -Type Directory| Out-Null
+}
+ 
+$old_checks = ls *_checks_*.txt
+if ($old_checks -ne $null) {mv -force $old_checks .\Archive}
+$old_checks2 = ls *_checks_*.html
+Write-Host $old_checks2
+if ($old_checks2 -ne $null) {mv -force $old_checks2 .\Archive}
+ 
+# check overide mode on days
+ 
+$weekendMode="False"
+ 
+if ( $args.count -gt 0 ){
+ 
+            if ($args[0] -eq "-override") {
+ 
+                        echo "Override"
+ 
+                        $starthour = read-host("Please enter start hour for batch (0-23) ")
+ 
+                        $pat = "^[0-9][0-9]$"
+                        $isnumber = $starthour -match $pat
+ 
+                        if ($isnumber -ne "True" ){
+                                    write-host "Invalid number: $starthour" -Foregroundcolor Red
+                                    exit
+                        }
+                        ElseIf ($starthour  -gt 23 ){
+                                    write-host "Invalid number: $starthour" -Foregroundcolor Red
+                                    exit
+                        }
+                        ElseIf ($starthour  -lt 0 ){
+                                    write-host "Invalid number: $starthour" -Foregroundcolor Red
+                                    exit
+                        }
+ 
+                        $endhour = read-host("Please enter end hour for batch (0-23) ")
+ 
+                        $isnumber = $endhour -match $pat
+ 
+                        if ($isnumber -ne "True" ){
+                                    write-host "Invalid number: $endhour" -Foregroundcolor Red
+                                    exit
+                        }
+                        ElseIf ($endhour  -gt 23 ){
+                                    write-host "Invalid number: $endhour" -Foregroundcolor Red
+                                    exit
+                        }
+                        ElseIf ($endhour  -lt 0 ){
+                                    write-host "Invalid number: $endhour" -Foregroundcolor Red
+                                    exit
+                        }
+                        $dayb = read-host("Please enter number of days to go back (0-4) ")
+                        echo "Normal Mode";
+ 
+                        }
+            ElseIf ($args[0] -eq "-weekend") {
+                        $dayb = $args[1]
+                        $weekendMode="True"
+                        echo "weekendMode"; $starthour = 22; $endhour = 05
+                        }
+}
+else {
+            $dayb = read-host("Please enter number of days to go back (0-4) ")
+            echo "Normal Mode"; $starthour = 22; $endhour = 05
+}
+ 
+if ( $endhour -lt $starthour) {
+            $dayadd=1
+}
+else {
+            $dayadd=0
+}
+ 
+#set number of days to go back
+ 
+#$dayb = read-host("Please enter number of days to go back (0-4) ")
+ 
+#validate days entry
+$pat = "^[0-9]*$"
+$isnumber = $dayb -match $pat
+if ($isnumber -ne "True" ){
+            write-host "Invalid number : $dayb" -Foregroundcolor Red
+            exit
+}
+ElseIf ([int]$dayb  -gt 23 ){
+            write-host "Invalid number gt: $dayb" -Foregroundcolor Red
+            exit
+}
+ElseIf ([int]$dayb  -lt 0 ){
+            write-host "Invalid number lt: $dayb" -Foregroundcolor Red
+            exit
+}
+if ($args[0] -eq "-override"){
+            $days_back = 0 - $dayb
+}
+else{
+            $days_back = -1
+            $days_back = $days_back - $dayb
+}
+ 
+if ($debug){
+            write-host "------"
+            write-host "Start Hour : "$starthour
+            write-host "End Hour : "$endhour
+            write-host "Days Back : "$days_back
+            write-host "Days to add : "$dayadd
+            write-host "------"
+}
+ 
+$run_date = (get-date).adddays($days_back+1).ToLongDateString()
+$file_date = (get-date).adddays($days_back).ToLongDateString()
+ 
+if ($starthour -lt $endhour){
+            $run_date = (get-date).adddays($days_back).ToLongDateString()
+            $file_date = (get-date).adddays($days_back-1).ToLongDateString()
+}
+ 
+#set output file name
+ 
+$Filename = "PIP_checks_" +(get-date).adddays($days_back).day.tostring() + "_" +(get-date).adddays($days_back).month.tostring() +".Txt"
+$HTMLfilename = "PIP_checks_" +(get-date).adddays($days_back).day.tostring() + "_" +(get-date).adddays($days_back).month.tostring() +".html"
+if ($weekendMode -eq "True") {
+            $HTMLfilename= "PIP_checksWeekend_" +(get-date).day.tostring()+"_" +(get-date).month.tostring() +".html"
+}
+$checks_file = ".\$filename"
+$checks_file2 = ".\$HTMLfilename"
+sc $checks_file "Test"
+ 
+# if file already present then delete
+if (test-path $checks_file) {
+            (Get-ChildItem $checks_file).delete()
+}
+if (test-path $checks_file2 ) {
+            if ($weekendMode -eq "False")
+            {
+                        (Get-ChildItem $checks_file2).delete()
+            }
+}
+if (test-path testit.csv) {
+            (Get-ChildItem testit.csv).delete()
+}
+ 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#Locate the .CMP and .AFP files for current run
+ 
+$Temp_archive="E:\hpexstream\PIP\Output\Temp\"
+ 
+$Temp_archive_N= ls $Temp_archive| where {$_.LastWriteTime -ge (get-date -hour $starthour -minute 00).adddays($days_back) -and $_.LastWriteTime -lt  (get-date -hour $endhour -minute 59 -second 00).adddays($days_back+$dayadd)}
+ 
+ 
+$afp_archive="E:\hpexstream\PIP\Output\Temp\$Temp_archive_N\PIP*.afp"
+$cmp_archive="E:\hpexstream\PIP\Output\Temp\$Temp_archive_N\PIP*.cmp"
+ 
+$afp_archive_N= ls $afp_archive| where {$_.LastWriteTime -ge (get-date -hour $starthour -minute 00).adddays($days_back) -and $_.LastWriteTime -lt  (get-date -hour $endhour -minute 59 -second 00).adddays($days_back+$dayadd)}
+ 
+$cmp_archive_N= ls $cmp_archive| where {$_.LastWriteTime -ge (get-date -hour $starthour -minute 00).adddays($days_back) -and $_.LastWriteTime -lt  (get-date -hour $endhour -minute 59 -second 00).adddays($days_back+$dayadd) }
+ 
+$afp_countStart=$afp_archive_N[0].Name
+$cmp_countStart=$cmp_archive_N[0].Name
+$afp_countEnd=$afp_archive_N[$afp_archive_N.Count-1].Name
+$cmp_countEnd=$cmp_archive_N[$afp_archive_N.Count-1].Name
+ 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 
+#Locate latest AFP, DRS and Skip files
+$AFP_File_N  = ls E:\hpexstream\PIP\Output\Logs\PIP_AFP*.Csv |where {$_.LastWriteTime -ge (get-date -hour $starthour -minute 00).adddays($days_back) -and $_.LastWriteTime -lt  (get-date -hour $endhour -minute 59 -second 00).adddays($days_back+$dayadd)}
+$DRS_file_N = ls E:\hpexstream\PIP\Output\Logs\PIP_DRS*.Csv |where {$_.LastWriteTime -ge  (get-date -hour $starthour -minute 00).adddays($days_back) -and $_.LastWriteTime -lt  (get-date -hour $endhour -minute 59 -second 00).adddays($days_back+$dayadd)}
+$Skip_file_N = ls E:\hpexstream\PIP\Output\Logs\PIP_Man*.Csv|where {$_.LastWriteTime -ge  (get-date -hour $starthour -minute 00).adddays($days_back) -and $_.LastWriteTime -lt  (get-date -hour $endhour -minute 59 -second 00).adddays($days_back+$dayadd)}
+#check files for that date have been found
+if ( $AFP_File_N -eq $Null ) {
+write-host "AFP File Not Found!" -Foregroundcolor Red;exit
+}
+if ( $DRS_file_N -eq $Null ) {
+write-host "DRS File Not Found!" -Foregroundcolor Red;exit
+}
+if ( $Skip_file_N -eq $Null ) {
+write-host "Skip File Not Found!" -Foregroundcolor Red;exit
+}
+ 
+$Stage_Dir = ls E:\hpexstream\PIP\Output\Stage\ |?{$_.PSIsContainer} |where {$_.LastWriteTime -ge  (get-date -hour $starthour -minute 00 -second 00).adddays($days_back) -and $_.LastWriteTime -lt  (get-date -hour $endhour -minute 59).adddays($days_back+$dayadd)}
+if ( $Stage_Dir -eq $Null ) {
+            write-host "Stage Folder Not Found!" -Foregroundcolor Red;exit
+}
+ 
+$Stage_file = $Stage_Dir.GetFiles()|where {$_.Name -like "*EXSTREAM*"}
+if ($Stage_file -eq $null){
+            write-host "XML Input Not Found!" -Foregroundcolor Red;exit
+}
+if ($Stage_file -is [system.array]){
+            write-host "Multiple XML Input Found!" -Foregroundcolor Red;exit
+}
+ 
+$temp_Dir = ls E:\hpexstream\PIP\Output\temp\ |?{$_.PSIsContainer} |where {$_.LastWriteTime -ge  (get-date -hour $starthour -minute 00 -second 00).adddays($days_back) -and $_.LastWriteTime -lt  (get-date -hour $endhour -minute 59).adddays($days_back+$dayadd)}
+if ( $temp_Dir -eq $Null ) {
+            write-host "temp Folder Not Found!" -Foregroundcolor Red;exit
+}
+$tar_Names= ls E:\hpexstream\PIP\Output\temp\$temp_Dir\ |?{$_.PSIsContainer}
+#$tar_Names
+ 
+ 
+#get a list of DRS response files between starthour - endhour+1 from pip cs response folder
+ 
+#[int]$temp_hour = [int]$endhour+1
+$DRS_Files_List = ls E:\hpexstream\PIP\DRSBatchResponses\*.brf |where {$_.LastWriteTime -ge  (get-date -hour $starthour -minute 00 -second 00).adddays($days_back) -and $_.LastWriteTime -lt  (get-date -hour $endhour -minute 59).adddays($days_back+$dayadd)}
+ 
+$AFP_File = import-csv $AFP_file_N -header "Customer No","Nino","Date","Type"|where {$_."Customer No" -ne 'EOR'}
+$DRS_file = import-csv $DRS_file_N -header "Customer No","Nino","Date","Type"|where {$_."Customer No" -ne 'EOR'}
+$Man_File = import-csv $Skip_file_N
+$file = ( Select-Xml -Path $Stage_file.Fullname -XPath / ).Node
+#Calculate expected number of DRS files
+if ($DRS_File -is [Array]){
+            $tempNo = $DRS_file.count/1000
+}
+else {
+            $tempno = 0.5
+}
+ 
+$DRS_BN = [int]($tempNo + 0.5)
+$P_7015 = $Man_File | Where-Object {$_."Case LetterType" -eq "PIP.7015" -and $_."Customer No" -ne "EOR"}
+$P_N7015 = $Man_File | Where-Object {$_."Case LetterType" -ne "PIP.7015" -and $_."Customer No" -ne "EOR"}
+ 
+# write batch details to output file
+ 
+add-content $checks_file "Date For - $run_date"
+add-content $checks_file $newline
+add-content $checks_file "Start Hour - $starthour"
+add-content $checks_file "End Hour - $endhour"
+add-content $checks_file $newline
+add-content $checks_file "XML File from - $file_date "
+add-content $checks_file "AFP File - $AFP_File_N"
+add-content $checks_file "DRS File - $DRS_file_N"
+add-content $checks_file "Skip File - $Skip_file_N"
+add-content $checks_file "XML File Path - $Stage_file"
+add-content $checks_file $newline
+ 
+ 
+if ($AFP_File -is [Array]){
+            $temp_text = "AFP Count - " + $AFP_File.count + $newline + "DRS Count - " + $DRS_file.count
+}
+else {
+            $temp_text = "AFP Count - 1" + $newline + "DRS Count - 1"
+}
+ 
+add-content $checks_file $temp_text
+[int]$Tsk = $Man_File.Count-1
+ 
+if ($tsk -gt 0 ) {
+            $temp_text = "Total Skips - " + $Tsk
+ 
+            #check if any 7015 pip files and if so add number of them to output otherwise output as zero
+ 
+            if ( $P_7015.Count -gt 0 ) {
+                        $temp_text = "7015 Skips - " + $P_7015.Count
+            }
+            else {
+                        $temp_text = "7015 Skips - 0"
+            }
+ 
+            add-content $checks_file $temp_text
+ 
+            if ($P_N7015.Count -gt 0 ) {
+                        $temp_text = "Valid Skips - " + $P_N7015.Count
+                        add-content $checks_file $temp_text
+            }
+}
+else {
+            $temp_text = "No Skips"
+            add-content $checks_file $temp_text
+}
+ 
+add-content $checks_file $newline
+ 
+ 
+if ($tar_Names -is [Array]){
+            $temp_text = "Tar File Names"
+            add-content $checks_file $temp_text
+            foreach ($tar in $tar_Names) {
+                        $temp_text = $tar.Name+".tar"
+                        add-content $checks_file $temp_text
+            }
+}
+ 
+add-content $checks_file $newline
+$temp_text = "DRS Batch Files Expected - " + $DRS_BN
+add-content $checks_file $temp_text
+ 
+if ($DRS_BN -gt 1) {
+            $temp_text = "DRS Batch Responses - " + $DRS_Files_List.Count
+            if ($DRS_Files_List.Count -ne $DRS_BN) {
+                        $DRSRespText="Failed, INC*** raised to investigate."
+                        if ($DRS_Files_List.Count -gt 0) {$DRS_Files_List.Count
+                                    $temp_temp_text_cos_powershell_is_awkward_with_strings=$DRS_Files_List.Count
+                                    $temp_text = "Mismatch in DRS Responses found - found $temp_temp_text_cos_powershell_is_awkward_with_strings / $DRS_BN"
+                        }
+                        else {
+                                    $temp_text = "No DRS Responses found"
+                        }
+            }
+            else {
+                        $DRSRespText="Success."
+            }
+}
+else {
+            if ($DRS_Files_List -ne $null) {
+                        $DRSRespText="Success."
+                        $temp_text = "DRS Batch Responses - 1"
+            }
+            else {
+                        $DRSRespText="Failed, INC*** raised to investigate."
+                        $temp_text = "No DRS Responses found"
+            }
+}
+add-content $checks_file $temp_text
+add-content $checks_file $newline
+add-content $checks_file "DRS Results - $DRSRespText"
+add-content $checks_file $newline
+ 
+# Add details from DRS response files to output file
+ 
+if ($DRS_Files_List -ne $null) {
+            $DRS_Files_List|Foreach-Object {
+                        [xml]$temp_xml = get-content $_
+                        $temp_text = $_.Name + " " + $_.CreationTime + " " + $temp_xml.response.batch_status
+                        add-content $checks_file $temp_text
+            }
+}
+else {
+            $temp_text = "No DRS Response!"
+            add-content $checks_file $temp_text
+}
+add-content $checks_file $newline
+#get skip file content and remove EOR and 7015 lines
+ 
+if ( $P_N7015.Count -gt 0 ) {
+ 
+            $temp_CSV = gc $Skip_file_N
+            $temp_CSV = $temp_CSV|where {$_ -notlike '*PIP.7015*'}
+            $temp_CSV = $temp_CSV|where {$_ -notlike 'EOR*'}
+           
+            # add nino and postcode coulmn
+ 
+            $temp_CSV[0] = 'Customer No, NINO, Postcode, Case LetterType, Input fields causing case to be skipped'
+ 
+            if ($debug){
+                        sc temp.debug "------------"
+                        ac temp.debug $temp_CSV
+                        ac temp.debug $P_N7015
+                        ac temp.debug "------------"
+            }
+ 
+            #run through each line on the skips file then add the NINO and postcode for each customer and write to output file
+ 
+            for($i=0; $i -le $P_N7015.Count-1; $i++) {
+                        [int]$Cust_no = $P_N7015[$i]."Customer No"
+                        $cust_no = $cust_no - 1
+                        $temp_NINO = $file.PIPData.PIPClaimant[$Cust_no].PIPClaimantDetails.claimantNino
+                        $temp_PCODE = $file.PIPData.PIPClaimant[$Cust_no].PIPClaimantDetails.claimantAddressPostcode
+ 
+                        if ($debug){
+                                    ac temp.debug "DolI :$I "
+                                    ac temp.debug $temp_CSV[$i+1]
+                                    ac temp.debug $P_N7015[$i]
+                                    ac temp.debug $temp_NINO 
+                                    ac temp.debug $temp_PCODE
+                                    ac temp.debug "------------"
+                        }
+ 
+                        $temp_CSV[$i+1] = $temp_CSV[$i+1].replace($P_N7015[$i]."Customer No".tostring() ,$P_N7015[$i]."Customer No".tostring() + ','+ $temp_NINO +','+ $temp_PCODE )
+ 
+            }
+            add-content $checks_file $temp_CSV
+            add-content $checks_file $newline
+}
+ 
+#Add text for raising incident
+if ( $TSK -gt 0 ) {
+            add-content $checks_file "-------- Incident text --------"
+            add-content $checks_file $newline
+            add-content $checks_file "PIPCS skipped files - $run_date"
+            add-content $checks_file $newline
+            add-content $checks_file "AMS PROGRESS:"
+            add-content $checks_file $newline
+            add-content $checks_file "File from - $file_date "
+            add-content $checks_file "File name - $Stage_file.Name"
+            add-content $checks_file $newline
+            add-content $checks_file "$TSK - Total skips"
+           
+            if ( $P_7015.Count -gt 0 ) {
+                        $temp_text = $P_7015.Count.tostring() + " PIP.7015 skips can be ignored under CR630 at the request of the DWP"
+                        add-content $checks_file $temp_text
+            }
+           
+            if ($P_N7015.Count -gt 0){$temp_text = $P_N7015.Count.tostring() + " x Valid Skips"}
+            else {$temp_text = "No valid skips"}
+           
+            add-content $checks_file $temp_text
+           
+}
+ 
+# Add email text for simple copy and paste, will tidy up in time
+ 
+add-content $checks_file $newline
+add-content $checks_file "----- Email content -----"
+add-content $checks_file $newline
+add-content $checks_file "Morning all,"
+add-content $checks_file $newline
+[int]$daydateback=$dayb
+$rundate=(Get-Date).AddDays(-($daydateback+1)).DayOfWeek
+add-content $checks_file "$rundate evening batch."
+add-content $checks_file $newline
+[int]$AFPCount = $AFP_File.count
+add-content $checks_file "$AFPCount notifications generated."
+add-content $checks_file $newline
+[int]$DRSCount = $DRS_file.count
+[int]$DRSFileCount= $DRS_Files_List.Count
+add-content $checks_file "$DRSCount PDF files generated."
+add-content $checks_file $newline
+ 
+if ($tar_Names -is [Array]){
+            $temp_text = "Tar File Names"
+            add-content $checks_file $temp_text
+            foreach ($tar in $tar_Names) {
+                        $temp_text = $tar.Name+".tar"
+                        add-content $checks_file $temp_text
+            }
+}
+add-content $checks_file $newline
+add-content $checks_file "DRSBatchResponse – $DRSRespText"
+add-content $checks_file $newline
+ 
+add-content $checks_file "Files For Williams Lea:"
+add-content $checks_file $newline
+add-content $checks_file $afp_countStart
+add-content $checks_file $afp_countEnd
+add-content $checks_file $newline
+add-content $checks_file $cmp_countStart
+add-content $checks_file $cmp_countEnd
+add-content $checks_file $newline
+ 
+[int]$TOTALSKIPS = $P_N7015.Count + $P_7015.Count
+[int]$NON7015SKIPS = $P_N7015.Count
+[int]$7015SKIPS = $P_7015.Count
+if ($TOTALSKIPS -eq 0) {
+            add-content $checks_file "No skips."
+}
+else {
+            add-content $checks_file "$TOTALSKIPS x skips, with $7015SKIPS X pip.7015 skips."
+            add-content $checks_file "Incident INC*** raised for the $NON7015SKIPS valid skips."
+}
+add-content $checks_file $newline
+add-content $checks_file "Thanks,"
+add-content $checks_file $newline
+add-content $checks_file $newline
+add-content $checks_file "This has been output to a HTML file in this directory to copy into a mail."
+ 
+# Output to HTML so Andy can copy it into his emails easier :P
+ 
+add-content $checks_file2 "----- Email content -----"
+add-content $checks_file2 "<br style = 'line-height:2;'><br>"
+add-content $checks_file2 "Morning all,"
+add-content $checks_file2 "<br style = 'line-height:2;'><br>"
+[int]$daydateback=$dayb
+$rundate=(Get-Date).AddDays(-($daydateback+1)).DayOfWeek
+add-content $checks_file2 "<b>$rundate evening batch.</b>"
+add-content $checks_file2 "<br style = 'line-height:2;'><br>"
+[int]$AFPCount = $AFP_File.count
+add-content $checks_file2 "<b>$AFPCount</b> notifications generated."
+add-content $checks_file2 "<br style = 'line-height:2;'><br>"
+[int]$DRSCount = $DRS_file.count
+[int]$DRSFileCount= $DRS_Files_List.Count
+add-content $checks_file2 "<b>$DRSCount</b> PDF files generated."
+add-content $checks_file2 "<br style = 'line-height:2;'><br>"
+ 
+if ($tar_Names -is [Array]){
+            $temp_text = "<b>Tar File Names</b><br>"
+            add-content $checks_file2 $temp_text
+            foreach ($tar in $tar_Names) {
+                        $temp_text = $tar.Name+".tar<br>"
+                        add-content $checks_file2 $temp_text
+            }
+}
+add-content $checks_file2 "<br>"
+ 
+if ($DRSRespText -eq "Success.") {
+            add-content $checks_file2 "DRSBatchResponse – <b>$DRSRespText</b>"
+}
+else {
+            add-content $checks_file2 "DRSBatchResponse – <font color='red'><b>$DRSRespText</b><font color='black'>"
+}
+add-content $checks_file2 "<br style = 'line-height:2;'><br>"
+ 
+add-content $checks_file2 "<b>Files For Williams Lea:</b><br>"
+add-content $checks_file2 "$afp_countStart - "
+add-content $checks_file2 "$afp_countEnd<br>"
+ 
+add-content $checks_file2 "$cmp_countStart - "
+add-content $checks_file2 "$cmp_countEnd"
+add-content $checks_file2 "<br style = 'line-height:2;'><br>"
+ 
+[int]$TOTALSKIPS = $P_N7015.Count + $P_7015.Count
+[int]$NON7015SKIPS = $P_N7015.Count
+[int]$7015SKIPS = $P_7015.Count
+if ($TOTALSKIPS -eq 0) {
+            add-content $checks_file2 "No skips."
+}
+else {
+            add-content $checks_file2 "<font color='red'><b>$TOTALSKIPS x skips, with $7015SKIPS X pip.7015 skips.</b><font color='black'>"
+            add-content $checks_file2 "<font color='red'><b>Incident INC*** raised for the $NON7015SKIPS valid skips.</b><font color='black'>"
+}
+add-content $checks_file2 "<br style = 'line-height:2;'><br>"
+add-content $checks_file2 "Thanks,"
+add-content $checks_file2 "<br style = 'line-height:2;'><br>"
+ 
+# open output file in notepad
+notepad $checks_file
